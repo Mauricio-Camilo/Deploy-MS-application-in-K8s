@@ -1,156 +1,237 @@
-# Demo Project
+# Deploying a Microservices Application on Kubernetes with Production Best Practices
 
-Deploy Microservices application in Kubernetes with Production & Security Best Practices
+This project demonstrates the deployment of a cloud-native microservices application on a managed Kubernetes cluster.
 
-## Technologies Used
+The project was completed as part of the DevOps Bootcamp by **TechWorld with Nana**. Beyond deploying the application, my goal was to understand how Kubernetes orchestrates distributed applications and how production-oriented practices improve reliability, scalability, and maintainability.
 
-Kubernetes, Redis, Linux, Linode LKE
+# Architecture
 
-## Project Description
+<p align="center">
+  <img src="./images/architecture.png" width="900">
+</p>
 
-- Create K8s manifests for Deployments and Services for all microservices of an online shop application
-- Deploy microservices to Linode’s managed Kubernetes cluster
 
-### Details of project
+# Business Problem
 
-- Deployment and Service Configuration of Microservices
+An e-commerce company is modernizing its platform by adopting a microservices architecture.
 
-  In this step, a single config.yaml file will be used to define all deployments and services for the 10 microservices in the application, along with a deployment for Redis. The configurations will include the names of the microservices, their interconnections, the environment variables required to run the application, and the accessible ports.
+Instead of running a monolithic application, the platform is composed of multiple independent microservices responsible for different business capabilities. Managing deployments, networking, service discovery, and communication between these services manually quickly becomes complex, creating the need for a platform capable of orchestrating the entire application.
 
-  - Email Service
+The company needs a platform capable of deploying all services in a standardized way while providing service discovery, workload isolation, health monitoring, and simplified application management.
 
-    Image: gcr.io/google-samples/microservices-demo/emailservice:v0.8.0
-    Container port: 8080
-    Service port: 5000
-    Env: PORT=8080
+# Solution Overview
 
-  - Product Catalog Service (connects to the product catalog service)
+To address these challenges, the application was deployed on a managed Kubernetes cluster using Kubernetes Deployments and Services to orchestrate all application components.
 
-    Image: gcr.io/google-samples/microservices-demo/productcatalogservice:v0.8.0
-    Container and Service port: 3550
-    Env: PORT=3550
+Each microservice runs independently within the cluster with its own Deployment and Service configuration. Internal communication is handled through Kubernetes Services and built-in DNS, while Redis provides centralized storage for the shopping cart service.
 
-  - Recommendation Service (connects to the product catalog service)
+The deployment also incorporates several Kubernetes practices commonly adopted in production environments, including namespaces, labels, health probes, resource requests and limits, version-pinned container images, and multiple replicas for improved availability.
 
-    Image: gcr.io/google-samples/microservices-demo/recommendationservice:v0.8.0
-    Container and Service port: 8080
-    Env: PORT=8080
-    Env: PRODUCT_CATALOG_SERVICE_ADDR="productcatalogservice:3550"
+# Implementation
 
-  - Payment Service
+## Namespace Isolation
 
-    Image: gcr.io/google-samples/microservices-demo/paymentservice:v0.8.0
-    Container and Service port: 50051
-    Env: PORT=50051
-    Env: DISABLE_PROFILER=1
+A dedicated namespace was created to isolate all application resources.
 
-  - Currency Service
+Namespaces provide logical separation within the cluster, making workloads easier to organize and manage while allowing multiple applications to coexist without resource conflicts.
 
-    Image: gcr.io/google-samples/microservices-demo/currencyservice:v0.8.0
-    Container and Service port: 7000
-    Env: PORT=7000
-    Env: DISABLE_PROFILER=1
+```bash
+kubectl create ns microservice
 
-  - Shipping Service
+kubectl apply -f config.yaml -n microservice
+```
 
-    Image: gcr.io/google-samples/microservices-demo/shippingservice:v0.8.0
-    Container and Service port: 50051
-    Env: PORT=50051
+📷 *Namespace / Cluster overview*
 
-  - Ad Service
+## Deployments
 
-    Image: gcr.io/google-samples/microservices-demo/adservice:v0.8.0
-    Container and Service port: 9555
-    Env: PORT=9555
+Each microservice is managed through its own Kubernetes Deployment.
 
-  - Redis Service
+Deployments define the desired state of an application, allowing Kubernetes to create Pods, replace unhealthy instances, and maintain the configured number of replicas automatically.
 
-    Image: redis:alpine (Docker Hub)
-    Container and Service port: 6379
+```yaml
+apiVersion: apps/v1
+kind: Deployment
 
-  - Cart Service (connects to Redis)
+metadata:
+  name: recommendationservice
 
-    Image: gcr.io/google-samples/microservices-demo/cartservice:v0.8.0
-    Container and Service port: 7070
-    Env: PORT=7070
-    Env: REDIS_ADDR="redis-cart:6379"
+spec:
+  replicas: 2
 
-  - Checkout Service (connects to 6 microservices)
+  selector:
+    matchLabels:
+      app: recommendationservice
+```
 
-    Image: gcr.io/google-samples/microservices-demo/checkoutservice:v0.8.0
-    Container and Service port: 5050
-    Env: PORT=5050
-    Multiple connection variables: PRODUCT_CATALOG_SERVICE_ADDR, SHIPPING_SERVICE_ADDR, PAYMENT_SERVICE_ADDR, EMAIL_SERVICE_ADDR, CURRENCY_SERVICE_ADDR, CART_SERVICE_ADDR
+📷 *Deployment example*
 
-  - Frontend (connects to 7 microservices)
 
-    Image: gcr.io/google-samples/microservices-demo/frontend:v0.8.0
-    Container and Service port: 8080
-    Node port: 30007
-    Multiple connection variables for other services.
+## Service Discovery
 
-- Deploy Microservices to K8s Cluster
-  A Kubernetes cluster was created on Linode, with the connection file downloaded and secured with chmod 400. The environment was set with export KUBECONFIG to use the Linode configuration file.
+One of Kubernetes' biggest advantages is its built-in service discovery.
 
-  Steps:
+Instead of communicating through Pod IP addresses, microservices communicate using Kubernetes Services and internal DNS names.
 
-  Create a namespace for the microservices deployment:
+For example, the Recommendation Service discovers the Product Catalog Service through its DNS name:
 
-  ```
-    kubectl create ns microservice
-  ```
+```yaml
+env:
+- name: PRODUCT_CATALOG_SERVICE_ADDR
+  value: "productcatalogservice:3550"
+```
 
-  Deploy the services:
+Likewise, the Cart Service communicates with Redis using another internal Service:
 
-  ```
-    kubectl apply -f config.yaml -n microservice
-  ```
+```yaml
+env:
+- name: REDIS_ADDR
+  value: "redis-cart:6379"
+```
 
-  Once deployed, the application can be accessed via any IP address of the 3 Linode nodes on port 30007.
+This approach allows Pods to be recreated without disrupting communication between application components.
+
+📷 *Microservice communication diagram*
+
+
+## Services
+
+Each Deployment is exposed internally through a Kubernetes Service.
+
+Services provide a stable endpoint for applications while Kubernetes automatically routes traffic to healthy Pods.
+
+```yaml
+kind: Service
+
+metadata:
+  name: paymentservice
+
+spec:
+  selector:
+    app: paymentservice
+
+  ports:
+    - port: 50051
+```
+
+📷 *Service configuration*
+
+
+## External Access
+
+For this project, the frontend is exposed through a NodePort Service, allowing external access for demonstration purposes.
+
+```yaml
+spec:
+  type: NodePort
+
+  ports:
+    - port: 8080
+      nodePort: 30007
+```
+
+In production environments, a LoadBalancer or Ingress would typically be preferred to provide a single entry point, TLS termination, and improved security.
+
+📷 *Application running*
+
+
+# Production Best Practices
+
+Beyond simply deploying the application, this project incorporates several Kubernetes practices commonly used in production environments.
+
+### Version-Pinned Images
+
+Container images use fixed versions instead of floating tags to guarantee predictable deployments.
+
+```yaml
+image: gcr.io/google-samples/microservices-demo/frontend:v0.8.0
+```
+
+### Liveness Probes
+
+Liveness probes allow Kubernetes to detect unhealthy containers and automatically restart them.
+
+```yaml
+livenessProbe:
+  grpc:
+    port: 8080
+  periodSeconds: 5
+```
+
+### Readiness Probes
+
+Readiness probes ensure that containers only begin receiving traffic after becoming fully operational.
+
+```yaml
+readinessProbe:
+  grpc:
+    port: 3550
+  periodSeconds: 5
+```
+
+Different probe types (HTTP, gRPC, and TCP) were configured according to each service's communication protocol.
+
+### Resource Requests and Limits
+
+CPU and memory requests and limits help Kubernetes schedule workloads efficiently while preventing individual containers from consuming excessive resources.
+
+```yaml
+resources:
+  requests:
+    cpu: 70m
+    memory: 200Mi
+
+  limits:
+    cpu: 125m
+    memory: 300Mi
+```
+
+### Labels
+
+Labels organize Kubernetes resources and allow Services to identify the Pods they should route traffic to.
+
+```yaml
+metadata:
+  labels:
+    app: frontend
+
+selector:
+  matchLabels:
+    app: frontend
+```
+
+### High Availability Considerations
+
+The project also follows several practices that improve application resiliency:
+
+- Multiple replicas for each microservice
+- Multiple Kubernetes worker nodes
+- Automatic Pod recreation through Deployments
+- Internal service discovery independent of Pod IP addresses
+
+# Final Result
 
   ![Diagram](./images/k8s-project5-1.png)
 
-- Kubernetes Deployment Best Practices
+The application was successfully deployed to a managed Kubernetes cluster, with all microservices communicating through Kubernetes Services and internal DNS.
 
-  Pinned Tag Versions for Container Images: All images are pinned to a specific version, here v0.8.0, to ensure consistent deployments.
+# What I Learned
 
-  Liveness Probe for Each Container: Enables Kubernetes to monitor application health and restart containers when necessary.
+Building this project strengthened my understanding of:
 
-  ```
-    livenessProbe:
-      grpc:
-        port: 8080
-      periodSeconds: 5
-  ```
+- Deploying distributed applications with Kubernetes
+- Managing Deployments and Services
+- Kubernetes service discovery and internal DNS
+- Namespace isolation
+- Labels and selectors
+- Health monitoring with Liveness and Readiness Probes
+- CPU and memory requests and limits
+- Production deployment best practices
+- Running containerized microservices on a managed Kubernetes cluster
 
-  Readiness Probe for Each Container: Ensures that containers are only marked as ready when they are ready to receive traffic.
 
-  ```
-    readinessProbe:
-      grpc:
-        port: 3550
-      periodSeconds: 5
-  ```
+# Acknowledgements
 
-  Different protocols, like HTTP for frontend and TCP for Redis, were configured as needed.
+This project was completed as part of the DevOps Bootcamp created by **TechWorld with Nana**.
 
-  Resource Requests and Limits: Sets CPU and memory requests and limits to manage resource allocation.
-
-  ```
-    resources:
-      requests:
-        cpu: 70m
-        memory: 200Mi
-      limits:
-        cpu: 125m
-        memory: 300Mi
-  ```
-    
-  Avoid NodePort Exposure: NodePort is insecure as it opens ports on all worker nodes. Instead, use a LoadBalancer service or Ingress to manage single-entry points.
-
-  Multiple Replicas per Pod: Ensures high availability by having at least two replicas for each microservice.
-
-  Multiple Worker Nodes: Protects against downtime if a single server fails or requires maintenance.
-
-  Use of Labels and Namespaces: Labels group related pods, while namespaces isolate components and facilitate cluster management, providing flexible access control across teams.
-
+The implementation, documentation, architectural analysis, and technical explanations in this repository reflect my own understanding and learning throughout the project.
