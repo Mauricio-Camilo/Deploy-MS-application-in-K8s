@@ -6,7 +6,7 @@ The project was completed as part of the DevOps Bootcamp by **TechWorld with Nan
 
 # Architecture
 
-  ![Diagram](./images/project-arquitecture.png)
+  ![Diagram](./images/project-architecture.png)
 
 # Business Problem
 
