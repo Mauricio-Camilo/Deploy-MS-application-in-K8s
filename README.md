@@ -6,10 +6,7 @@ The project was completed as part of the DevOps Bootcamp by **TechWorld with Nan
 
 # Architecture
 
-<p align="center">
-  <img src="./images/architecture.png" width="900">
-</p>
-
+  ![Diagram](./images/project-arquitecture.png)
 
 # Business Problem
 
