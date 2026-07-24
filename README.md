@@ -4,10 +4,6 @@ This project demonstrates the deployment of a cloud-native microservices applica
 
 The project was completed as part of the DevOps Bootcamp by **TechWorld with Nana**. Beyond deploying the application, my goal was to understand how Kubernetes orchestrates distributed applications and how production-oriented practices improve reliability, scalability, and maintainability.
 
-# Architecture
-
-  ![Diagram](./images/project-architecture.png)
-
 # Business Problem
 
 An e-commerce company is modernizing its platform by adopting a microservices architecture.
@@ -23,6 +19,14 @@ To address these challenges, the application was deployed on a managed Kubernete
 Each microservice runs independently within the cluster with its own Deployment and Service configuration. Internal communication is handled through Kubernetes Services and built-in DNS, while Redis provides centralized storage for the shopping cart service.
 
 The deployment also incorporates several Kubernetes practices commonly adopted in production environments, including namespaces, labels, health probes, resource requests and limits, version-pinned container images, and multiple replicas for improved availability.
+
+# Architecture
+
+The following diagram illustrates the high-level architecture of the application and the communication between its microservices running on the Kubernetes cluster.
+
+  ![Diagram](./images/project-architecture.png)
+
+The frontend acts as the application's entry point, communicating with business services such as Checkout and Cart. Internal communication between microservices is handled through Kubernetes Services and internal DNS, while Redis provides caching for the shopping cart.  
 
 # Implementation
 
